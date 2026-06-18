@@ -46,7 +46,7 @@ current_kernel=$(uname -r)
 program_name="pvekclean"
 
 # Version
-version="2.0.2"
+version="2.1.0"
 
 # Text Colors
 black="\e[38;2;0;0;0m"
@@ -133,19 +133,35 @@ get_drive_status() {
 	fi
 }
 
+# Detect boot method: returns "systemd-boot" or "grub"
+detect_boot_method() {
+	if [ -d /sys/firmware/efi ] && command -v proxmox-boot-tool &>/dev/null; then
+		# Check if proxmox-boot-tool manages this system
+		if proxmox-boot-tool status &>/dev/null 2>&1; then
+			echo "systemd-boot"
+			return
+		fi
+	fi
+	echo "grub"
+}
+
 # Show current system information
 kernel_info() {
-	# Lastest kernel installed
-	latest_kernel=$(dpkg --list | awk '/proxmox-kernel-.*-pve/{print $2}' | sed -n 's/proxmox-kernel-//p' | sort -V | tail -n 1 | tr -d '[:space:]')
+	# Latest kernel installed — filter out metapackages named "Latest" (fix for issue #13/#10)
+	latest_kernel=$(dpkg --list | grep -vw Latest | awk '/proxmox-kernel-.*-pve/{print $2}' | sed -n 's/proxmox-kernel-//p' | sort -V | tail -n 1 | tr -d '[:space:]')
 	[ -z "$latest_kernel" ] && latest_kernel="N/A"
 	# Show operating system used
 	printf " ${bold}OS:${reset} $(cat /etc/os-release | grep "PRETTY_NAME" | sed 's/PRETTY_NAME=//g' | sed 's/["]//g' | awk '{print $0}')\n"
-	# Get information about the /boot folder
+	# Get information about the /boot folder — fall back to / for ZFS installs (fix for issue #12/#15)
 	boot_info=($(echo $(df -Ph | grep /boot | tail -1) | sed 's/%//g'))
+	[ ${#boot_info[*]} -gt 0 ] || boot_info=($(echo $(df -Ph / | tail -1) | sed 's/%//g'))
 	# Show information about the /boot
 	printf " ${bold}Boot Disk:${reset} ${boot_info[4]}%% full [${boot_info[2]}/${boot_info[1]} used, ${boot_info[3]} free] \n"
 	# Show current kernel in use
 	printf " ${bold}Current Kernel:${reset} $current_kernel\n"
+	# Detect and show boot method
+	boot_method=$(detect_boot_method)
+	printf " ${bold}Boot Method:${reset} $boot_method\n"
 	# Check if they are running a PVE kernel
 	if [[ "$current_kernel" == *"pve"* ]]; then
 		# Check if we are running the latest kernel, if not warn
@@ -332,8 +348,8 @@ uninstall_program() {
 
 # PVE Kernel Clean main function
 pve_kernel_clean() {
-	# Find all the PVE kernels on the system
-	kernels=$(dpkg --list | grep -E "(pve-kernel|proxmox-kernel)-[0-9].*" | grep -E "Kernel Image" | grep -vE "${latest_kernel%-pve}|series|transitional" | awk '{print $2}' | sed -n 's/\(pve\|proxmox\)-kernel-\(.*\)/\2/p' | sort -V)
+	# Find all the PVE kernels on the system — filter metapackages with "Latest" in name (fix for issue #13/#10)
+	kernels=$(dpkg --list | grep -vw Latest | grep -E "(pve-kernel|proxmox-kernel)-[0-9].*" | grep -E "Kernel Image" | grep -vE "${latest_kernel%-pve}|series|transitional" | awk '{print $2}' | sed -n 's/\(pve\|proxmox\)-kernel-\(.*\)/\2/p' | sort -V)
 	# List of kernels that will be removed (adds them as the script goes on)
 	kernels_to_remove=()
 	# Boot drive status
@@ -361,10 +377,6 @@ pve_kernel_clean() {
 			kernels_to_remove+=("$kernel")  # Add the kernel to the array
 		fi
 	done
-	# If remove_newer is set keep the last kernel installed as its newest
-	# if [ "$remove_newer" == "true" ] && [ "$current_kernel_passed" == "true" ] && [ ${#kernels_to_remove[@]} -gt 0 ]; then
-	# 	unset kernels_to_remove[-1]
-	# fi
 	# If keep_kernels is set we remove this number from the array to remove
 	if [[ -n "$keep_kernels" ]] && [[ "$keep_kernels" =~ ^[0-9]+$ ]]; then
 		if [ $keep_kernels -gt 0 ]; then
@@ -411,26 +423,40 @@ pve_kernel_clean() {
 			for kernel in "${kernels_to_remove[@]}"
 			do
 				printf "${bold}[-]${reset} Removing kernel: $kernel..."
-				# Purge the old kernels via apt and suppress output
+				# Purge the old kernels via apt and suppress output (fix for issue #16/#18: purge headers too)
 				if [ "$dry_run" != "true" ]; then
 					/usr/bin/apt purge -y pve-kernel-$kernel > /dev/null 2>&1
 					/usr/bin/apt purge -y proxmox-kernel-$kernel > /dev/null 2>&1
 					/usr/bin/apt purge -y pve-kernel-${kernel%-pve} > /dev/null 2>&1
 					/usr/bin/apt purge -y proxmox-kernel-${kernel%-pve} > /dev/null 2>&1
+					/usr/bin/apt purge -y pve-headers-$kernel > /dev/null 2>&1
 					/usr/bin/apt purge -y pve-headers-${kernel%-pve} > /dev/null 2>&1
+					/usr/bin/apt purge -y proxmox-headers-$kernel > /dev/null 2>&1
 					/usr/bin/apt purge -y proxmox-headers-${kernel%-pve} > /dev/null 2>&1
 				fi
 				sleep 1			
 				printf "${bold}${green}DONE!${reset}\n"
 			done
-			printf "${bold}[*]${reset} Updating GRUB..."
-			# Update grub after kernels are removed, suppress output
+			# Update bootloader after kernel removal
+			printf "${bold}[*]${reset} Updating bootloader..."
 			if [ "$dry_run" != "true" ]; then
-				/usr/sbin/update-grub > /dev/null 2>&1
+				# Fix for issue #13: use proxmox-boot-tool for UEFI/systemd-boot installs
+				if [ "$boot_method" == "systemd-boot" ]; then
+					proxmox-boot-tool refresh > /dev/null 2>&1
+				else
+					/usr/sbin/update-grub > /dev/null 2>&1
+				fi
 			fi
 			printf "${bold}${green}DONE!${reset}\n"
-			# Get information about the /boot folder
+			# Run apt autoremove to clean up any leftover dependency packages (fix for issue #19)
+			printf "${bold}[*]${reset} Running apt autoremove..."
+			if [ "$dry_run" != "true" ]; then
+				/usr/bin/apt autoremove -y > /dev/null 2>&1
+			fi
+			printf "${bold}${green}DONE!${reset}\n"
+			# Get information about the /boot folder — fall back to / for ZFS installs (fix for issue #12/#15)
 			boot_info=($(echo $(df -Ph | grep /boot | tail -1) | sed 's/%//g'))
+			[ ${#boot_info[*]} -gt 0 ] || boot_info=($(echo $(df -Ph / | tail -1) | sed 's/%//g'))
 			# Show information about the /boot
 			printf "${bold}[-]${reset} ${bold}Boot Disk:${reset} ${boot_info[4]}%% full [${boot_info[2]}/${boot_info[1]} used, ${boot_info[3]} free] \n"
 			# Script finished successfully
