@@ -136,7 +136,7 @@ pvekclean -rn -k 2
 ## Developers
 
 * **Jordan Hillis** — *Original Author* ([jordan@hillis.email](mailto:jordan@hillis.email))
-* **IT-Kuny** — *Fork Maintainer* (community PRs + bug fixes)
+* **IT-Kuny** — *Fork Maintainer* [it@it-kuny.ch](mailto:it@it-kuny.ch) community PRs + bug fixes
 
 ## License
 
