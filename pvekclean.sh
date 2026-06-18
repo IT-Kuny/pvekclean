@@ -135,9 +135,10 @@ get_drive_status() {
 
 # Detect boot method: returns "systemd-boot" or "grub"
 detect_boot_method() {
-	if [ -d /sys/firmware/efi ] && command -v proxmox-boot-tool &>/dev/null; then
+	local pbt="/usr/sbin/proxmox-boot-tool"
+	if [ -d /sys/firmware/efi ] && [ -x "$pbt" ]; then
 		# Check if proxmox-boot-tool manages this system
-		if proxmox-boot-tool status &>/dev/null 2>&1; then
+		if "$pbt" status &>/dev/null 2>&1; then
 			echo "systemd-boot"
 			return
 		fi
@@ -442,7 +443,7 @@ pve_kernel_clean() {
 			if [ "$dry_run" != "true" ]; then
 				# Fix for issue #13: use proxmox-boot-tool for UEFI/systemd-boot installs
 				if [ "$boot_method" == "systemd-boot" ]; then
-					proxmox-boot-tool refresh > /dev/null 2>&1
+					/usr/sbin/proxmox-boot-tool refresh > /dev/null 2>&1
 				else
 					/usr/sbin/update-grub > /dev/null 2>&1
 				fi
