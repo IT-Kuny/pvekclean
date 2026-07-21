@@ -274,25 +274,13 @@ scheduler() {
 
 # Installs PVE Kernel Cleaner for easier access
 install_program() {
-	force_pvekclean_update=false
     local tmp_file="/tmp/.pvekclean_install_lock"
     local install=false
     local ask_interval=3600  # 1 hour in seconds	
-	# If pvekclean exists on the system
-	if [ -e /usr/local/sbin/$program_name ]; then
-		# Get current version of pvekclean
-		pvekclean_installed_version=$(/usr/local/sbin/$program_name -v | awk '{printf $0}')
-		# If the running script is newer than the installed version, update it
-		if version_gt "$version" "$pvekclean_installed_version" && [ $force_purge == false ]; then
-			printf "${bold}[!]${reset} A new version of PVE Kernel Cleaner has been detected (Installed: $pvekclean_installed_version | New: $version).\n"
-			printf "${bold}[*]${reset} Installing update...\n"
-			force_pvekclean_update=true
-		fi
-	fi
     # Check if the file doesn't exist or it's been over an hour since the last ask
-    if [ ! -e "$tmp_file" ] || [ ! -f "$tmp_file" ] || [ $(( $(date +%s) - $(cat "$tmp_file") )) -gt $ask_interval ] || [ $force_pvekclean_update == true ] || [ -n "$force_pvekclean_install" ]; then	
-		# If pvekclean does not exist on the system or force_purge is enabled
-		if [ ! -f /usr/local/sbin/$program_name ] || [ $force_pvekclean_update == true ] || [ -n "$force_pvekclean_install" ]; then
+    if [ ! -e "$tmp_file" ] || [ ! -f "$tmp_file" ] || [ $(( $(date +%s) - $(cat "$tmp_file") )) -gt $ask_interval ] || [ -n "$force_pvekclean_install" ]; then	
+		# If pvekclean does not exist on the system
+		if [ ! -f /usr/local/sbin/$program_name ] || [ -n "$force_pvekclean_install" ]; then
 			# Ask user if we can install it to their system
 			if [ $force_purge == true ]; then
 				REPLY="n"
