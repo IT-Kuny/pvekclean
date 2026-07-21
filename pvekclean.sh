@@ -282,8 +282,8 @@ install_program() {
 	if [ -e /usr/local/sbin/$program_name ]; then
 		# Get current version of pvekclean
 		pvekclean_installed_version=$(/usr/local/sbin/$program_name -v | awk '{printf $0}')
-		# If the version differs, update it to the latest from the script
-		if [ $version != $pvekclean_installed_version ] && [ $force_purge == false ]; then
+		# If the running script is newer than the installed version, update it
+		if version_gt "$version" "$pvekclean_installed_version" && [ $force_purge == false ]; then
 			printf "${bold}[!]${reset} A new version of PVE Kernel Cleaner has been detected (Installed: $pvekclean_installed_version | New: $version).\n"
 			printf "${bold}[*]${reset} Installing update...\n"
 			force_pvekclean_update=true
@@ -485,8 +485,8 @@ check_for_update() {
 			printf "${bold}[*]${reset} Invalid remote version format: ${bold}${orange}$remote_version${reset}. Skipping update check.\n"
 			return
 		fi
-		# If version isn't the same
-		if [ "$remote_version" != "$version" ]; then
+		# If remote version is newer than current version
+		if version_gt "$remote_version" "$version"; then
 			printf "*** A new version $remote_version is available! ***\n"
 			printf "${bold}[*]${reset} Do you want to update? [y/N] "
 			read -n 1 -r
@@ -505,6 +505,19 @@ check_for_update() {
 			fi
 		fi
 	fi
+}
+
+# Compare two semver strings, returns 0 (true) if $1 > $2
+version_gt() {
+	local IFS=.
+	local i v1=($1) v2=($2)
+	for ((i=${#v1[@]}; i<${#v2[@]}; i++)); do v1[i]=0; done
+	for ((i=${#v2[@]}; i<${#v1[@]}; i++)); do v2[i]=0; done
+	for ((i=0; i<${#v1[@]}; i++)); do
+		if ((10#${v1[i]} > 10#${v2[i]})); then return 0; fi
+		if ((10#${v1[i]} < 10#${v2[i]})); then return 1; fi
+	done
+	return 1
 }
 
 timeGreeting() {
