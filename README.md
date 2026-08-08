@@ -35,8 +35,11 @@ This fork addresses multiple open issues from the upstream repository that have 
 * Dry-run mode for non-destructive testing
 * Keeps a configurable minimum number of recent kernels
 * Support for latest Proxmox VE versions and kernel naming conventions
+* **Semantic version comparison** for update checks (no false downgrade prompts)
 
-## What's Fixed in This Fork (v2.1.0)
+## What's Fixed in This Fork
+
+### v2.1.0 — Initial Fork Release
 
 | Issue | Description | Fix |
 |-------|-------------|-----|
@@ -47,6 +50,13 @@ This fork addresses multiple open issues from the upstream repository that have 
 | [#19](https://github.com/jordanhillis/pvekclean/issues/19) | Removed kernels reappear as candidates on next run | Run `apt autoremove -y` after purge to flush stale dpkg state |
 
 Incorporates upstream PRs [#17](https://github.com/jordanhillis/pvekclean/pull/17) and [#21](https://github.com/jordanhillis/pvekclean/pull/21).
+
+### Update Check Fix (PR [#2](https://github.com/IT-Kuny/pvekclean/pull/2))
+
+| Problem | Fix |
+|---------|-----|
+| `check_for_update()` offered downgrade to older remote versions | Added `version_gt()` helper for proper semver comparison — only prompt when remote is genuinely newer |
+| `install_program()` showed false "new version detected" against `/usr/local/sbin` copy | Removed redundant version comparison against installed copy |
 
 ## Latest Version
 
@@ -88,7 +98,7 @@ chmod +x pvekclean.sh
 
 PVE Kernel Cleaner checks for updates automatically on each run. If a new version is available you will be prompted to update in-place.
 
-> **Note:** The auto-update checks against the upstream `jordanhillis/pvekclean` repository. If you want to stay on this fork's version, you can set `check_for_updates=false` at the top of the script.
+> **Note:** The update check uses semantic version comparison (fixed in PR [#2](https://github.com/IT-Kuny/pvekclean/pull/2)) — older remote versions will no longer trigger false update prompts.
 
 ## Usage
 
